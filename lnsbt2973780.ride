@@ -1,0 +1,243 @@
+{-# STDLIB_VERSION 5 #-}
+{-# SCRIPT_TYPE ACCOUNT #-}
+{-# CONTENT_TYPE DAPP #-}
+let startBlock = 2930580
+
+let targetBlock = 2973780
+
+let maximumAmount = 2000000000
+
+let nsbtAssetId = base58'6nSpVyNH7yM69eg446wrQR94ipbbcmZMU1ENPwanC97g'
+
+let usdnAssetId = base58'DG2xFkPdDwKUoBkzGAhQtLpSGzfXLiCYPEzeKH2Ad24p'
+
+let eurnAssetId = base58'DUk2YTxhRoAqMJLus4G2b3fR8hMHVh6eiyFx5r29VR6t'
+
+let rubnAssetId = base58'eWeMD5KNeuRaALCAb4uuJKtAvon2JcTyXQyoBMhuN2X'
+
+let cnynAssetId = base58'9LNqjybyCX1oexCub4yY7hdJf6aeP4HeV5LpsjcNHwRR'
+
+let jpynAssetId = base58'8inca5fv4xr6KZtRMRPYr7vADfk8fd6G2z1gMoRkbUYS'
+
+let uahnAssetId = base58'8zKqZF6asB6yiK8rv9nMUkJ7wAVBJndSmkC7SXJhRrM3'
+
+let brlnAssetId = base58'DxFwXxS1r3uZ2QEiSqhe6uoXMJBsz4ShLtHvr4HDzNri'
+
+let gbpnAssetId = base58'DhaaqiG8xz8njeBuMtTM2G6avg9Jdhfrxw5onm5GaXx1'
+
+let trynAssetId = base58'DGbqkzM6Ds5NAF2B3GHYfyZRmWKt7xLYRYcwpMm7D6V4'
+
+let neutrinoAddress = Address(base58'3PNikM6yp4NqcSU8guxQtmR5onr2D4e8yTJ')
+
+let neutrinoAddress2 = Address(base58'3PFhcMmEZoQTQ6ohA844c7C9M8ZJ18P8dDj')
+
+@Callable(i)
+func init () = {
+    let isInitialized = valueOrElse(getBoolean(this, "initialized"), false)
+    if (if (if ((height >= startBlock))
+        then (targetBlock > height)
+        else false)
+        then !(isInitialized)
+        else false)
+        then {
+            let assetIssue = Issue(("LNSBT_" + toString(targetBlock)), ("Liquid NSBT, target block height: " + toString(targetBlock)), 1, 6, true)
+            let assetId = calculateAssetId(assetIssue)
+            let assetIdString = toBase58String(assetId)
+            _Tuple2([assetIssue, Burn(assetId, 1), StringEntry((("LNSBT_" + toString(targetBlock)) + "_asset_id"), assetIdString), IntegerEntry("initialized_block", height), BooleanEntry("initialized", true)], unit)
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func lockNsbt () = {
+    let isInitialized = valueOrElse(getBoolean(this, "initialized"), false)
+    let validBlock = if ((height >= startBlock))
+        then (targetBlock > height)
+        else false
+    if (if (if (isInitialized)
+        then validBlock
+        else false)
+        then (size(i.payments) == 1)
+        else false)
+        then {
+            let payment = i.payments[0]
+            let availableAmount = (maximumAmount - valueOrElse(getInteger(this, "total_nsbt_lock"), 0))
+            if (if (if ((payment.assetId == nsbtAssetId))
+                then (availableAmount >= payment.amount)
+                else false)
+                then (payment.amount > 0)
+                else false)
+                then {
+                    let amount = payment.amount
+                    let share = ((targetBlock - height) * amount)
+                    let walletPreviousAmount = valueOrElse(getInteger(this, (toString(i.caller) + "_nsbt_lock")), 0)
+                    let walletNewAmount = (walletPreviousAmount + amount)
+                    let walletPreviousShare = valueOrElse(getInteger(this, (toString(i.caller) + "_share")), 0)
+                    let walletNewShare = (walletPreviousShare + share)
+                    let previousNsbtLockAmount = valueOrElse(getInteger("total_nsbt_lock"), 0)
+                    let newNsbtLockAmount = (previousNsbtLockAmount + amount)
+                    let previousTotalShare = valueOrElse(getInteger("total_share"), 0)
+                    let newTotalShare = (previousTotalShare + share)
+                    let lnsbtAssetId = fromBase58String(getStringValue(this, (("LNSBT_" + toString(targetBlock)) + "_asset_id")))
+                    let nsbtLockCall = invoke(neutrinoAddress, "lockNsbt", nil, [AttachedPayment(nsbtAssetId, amount)])
+                    if ((nsbtLockCall == nsbtLockCall))
+                        then _Tuple2([Reissue(lnsbtAssetId, amount, true), ScriptTransfer(i.caller, amount, lnsbtAssetId), IntegerEntry((toString(i.caller) + "_nsbt_lock"), walletNewAmount), IntegerEntry((toString(i.caller) + "_share"), walletNewShare), IntegerEntry("total_nsbt_lock", newNsbtLockAmount), IntegerEntry("total_share", newTotalShare)], unit)
+                        else throw("Strict value is not equal to itself.")
+                    }
+                else throw("")
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func stakeRewards () = {
+    let isInitialized = valueOrElse(getBoolean(this, "initialized"), false)
+    let validBlock = if ((height >= startBlock))
+        then (targetBlock > height)
+        else false
+    let usdnBalance = assetBalance(this, usdnAssetId)
+    let eurnBalance = assetBalance(this, eurnAssetId)
+    if (if (if (if (isInitialized)
+        then validBlock
+        else false)
+        then (usdnBalance > 0)
+        else false)
+        then (eurnBalance > 0)
+        else false)
+        then {
+            let usdnStakeCall = invoke(neutrinoAddress, "lockNeutrino", nil, [AttachedPayment(usdnAssetId, usdnBalance)])
+            if ((usdnStakeCall == usdnStakeCall))
+                then {
+                    let eurnStakeCall = invoke(neutrinoAddress2, "startStaking", nil, [AttachedPayment(eurnAssetId, eurnBalance)])
+                    if ((eurnStakeCall == eurnStakeCall))
+                        then {
+                            let totalUsdnStaked = (valueOrElse(getInteger(this, "total_staked_usdn"), 0) + usdnBalance)
+                            let totalEurnStaked = (valueOrElse(getInteger(this, "total_staked_eurn"), 0) + eurnBalance)
+                            _Tuple2([IntegerEntry("total_staked_usdn", totalUsdnStaked), IntegerEntry("total_staked_eurn", totalEurnStaked), ScriptTransfer(i.caller, assetBalance(this, rubnAssetId), rubnAssetId), ScriptTransfer(i.caller, assetBalance(this, cnynAssetId), cnynAssetId), ScriptTransfer(i.caller, assetBalance(this, jpynAssetId), jpynAssetId), ScriptTransfer(i.caller, assetBalance(this, uahnAssetId), uahnAssetId), ScriptTransfer(i.caller, assetBalance(this, brlnAssetId), brlnAssetId), ScriptTransfer(i.caller, assetBalance(this, gbpnAssetId), gbpnAssetId), ScriptTransfer(i.caller, assetBalance(this, trynAssetId), trynAssetId)], unit)
+                            }
+                        else throw("Strict value is not equal to itself.")
+                    }
+                else throw("Strict value is not equal to itself.")
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func end () = {
+    let isInitialized = valueOrElse(getBoolean(this, "initialized"), false)
+    let isEnded = valueOrElse(getBoolean(this, "ended"), false)
+    let validBlock = (height >= targetBlock)
+    if (if (if (isInitialized)
+        then validBlock
+        else false)
+        then !(isEnded)
+        else false)
+        then {
+            let stakedNsbt = valueOrElse(getInteger(this, "total_nsbt_lock"), 0)
+            let stakedUsdn = valueOrElse(getInteger(this, "total_staked_usdn"), 0)
+            let stakedEurn = valueOrElse(getInteger(this, "total_staked_eurn"), 0)
+            let nsbtUnstakeCall = invoke(neutrinoAddress, "unlockNsbt", [stakedNsbt, toBase58String(nsbtAssetId)], nil)
+            if ((nsbtUnstakeCall == nsbtUnstakeCall))
+                then {
+                    let usdnUnstakeCall = invoke(neutrinoAddress, "unlockNeutrino", [stakedUsdn, toBase58String(usdnAssetId)], nil)
+                    if ((usdnUnstakeCall == usdnUnstakeCall))
+                        then {
+                            let eurnUnstakeCall = invoke(neutrinoAddress2, "stopStaking", [stakedEurn, toBase58String(eurnAssetId)], nil)
+                            if ((eurnUnstakeCall == eurnUnstakeCall))
+                                then _Tuple2([BooleanEntry("ended", true), IntegerEntry("end_block", height), BooleanEntry("nsbt_unstaked", true), BooleanEntry("usdn_unstaked", true), BooleanEntry("eurn_unstaked", true)], unit)
+                                else throw("Strict value is not equal to itself.")
+                            }
+                        else throw("Strict value is not equal to itself.")
+                    }
+                else throw("Strict value is not equal to itself.")
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func redeemNsbt () = {
+    let isEnded = valueOrElse(getBoolean(this, "ended"), false)
+    let lnsbtAssetId = fromBase58String(getStringValue(this, (("LNSBT_" + toString(targetBlock)) + "_asset_id")))
+    if (if (if (if (isEnded)
+        then (size(i.payments) == 1)
+        else false)
+        then (i.payments[0].amount > 0)
+        else false)
+        then (i.payments[0].assetId == lnsbtAssetId)
+        else false)
+        then {
+            let payment = i.payments[0]
+            let address = toString(i.caller)
+            let walletPreviousRedeemedAmount = valueOrElse(getInteger(this, (address + "_redeemed_nsbt_amount")), 0)
+            let walletNewRedeemedAmount = (walletPreviousRedeemedAmount + payment.amount)
+            let previousRedeemedAmount = valueOrElse(getInteger(this, "total_redeemed_nsbt_amount"), 0)
+            let newRedeemedAmount = (previousRedeemedAmount + payment.amount)
+            _Tuple2([Burn(lnsbtAssetId, payment.amount), ScriptTransfer(i.caller, payment.amount, nsbtAssetId), IntegerEntry("total_redeemed_nsbt_amount", newRedeemedAmount), IntegerEntry((address + "_redeemed_nsbt_amount"), walletNewRedeemedAmount)], unit)
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func activateClaim () = {
+    let isEnded = valueOrElse(getBoolean(this, "ended"), false)
+    let isClaimActive = valueOrElse(getBoolean(this, "claim_active"), false)
+    if (if (isEnded)
+        then !(isClaimActive)
+        else false)
+        then {
+            let endBlock = getIntegerValue(this, "end_block")
+            if ((height >= (endBlock + 2880)))
+                then {
+                    let contractWavesBalance = wavesBalance(this).regular
+                    let usdnBalance = assetBalance(this, usdnAssetId)
+                    let eurnBalance = assetBalance(this, eurnAssetId)
+                    _Tuple2([BooleanEntry("claim_active", true), IntegerEntry("claimable_waves_balance", contractWavesBalance), IntegerEntry("claimable_usdn_balance", usdnBalance), IntegerEntry("claimable_eurn_balance", eurnBalance), ScriptTransfer(i.caller, assetBalance(this, rubnAssetId), rubnAssetId), ScriptTransfer(i.caller, assetBalance(this, cnynAssetId), cnynAssetId), ScriptTransfer(i.caller, assetBalance(this, jpynAssetId), jpynAssetId), ScriptTransfer(i.caller, assetBalance(this, uahnAssetId), uahnAssetId), ScriptTransfer(i.caller, assetBalance(this, brlnAssetId), brlnAssetId), ScriptTransfer(i.caller, assetBalance(this, gbpnAssetId), gbpnAssetId), ScriptTransfer(i.caller, assetBalance(this, trynAssetId), trynAssetId)], unit)
+                    }
+                else throw("")
+            }
+        else throw("")
+    }
+
+
+
+@Callable(i)
+func claim () = {
+    let isClaimActive = valueOrElse(getBoolean(this, "claim_active"), false)
+    if (isClaimActive)
+        then {
+            let callerShare = valueOrElse(getInteger(this, (toString(i.caller) + "_share")), 0)
+            let callerClaimed = valueOrElse(getBoolean(this, (toString(i.caller) + "_claimed")), false)
+            if (if ((callerShare > 0))
+                then !(callerClaimed)
+                else false)
+                then {
+                    let totalShare = getIntegerValue(this, "total_share")
+                    let claimableWavesBalance = getIntegerValue(this, "claimable_waves_balance")
+                    let claimableUsdnBalance = getIntegerValue(this, "claimable_usdn_balance")
+                    let claimableEurnBalance = getIntegerValue(this, "claimable_eurn_balance")
+                    let callerWavesAmount = fraction(callerShare, claimableWavesBalance, totalShare, CEILING)
+                    let callerUsdnAmount = fraction(callerShare, claimableUsdnBalance, totalShare, CEILING)
+                    let callerEurnAmount = fraction(callerShare, claimableEurnBalance, totalShare, CEILING)
+                    let totalClaimedWaves = (valueOrElse(getInteger(this, "total_claimed_waves"), 0) + callerWavesAmount)
+                    let totalClaimedUsdn = (valueOrElse(getInteger(this, "total_claimed_usdn"), 0) + callerUsdnAmount)
+                    let totalClaimedEurn = (valueOrElse(getInteger(this, "total_claimed_eurn"), 0) + callerEurnAmount)
+                    _Tuple2([ScriptTransfer(i.caller, callerWavesAmount, unit), IntegerEntry((toString(i.caller) + "_claimed_waves"), callerWavesAmount), ScriptTransfer(i.caller, callerUsdnAmount, usdnAssetId), IntegerEntry((toString(i.caller) + "_claimed_usdn"), callerUsdnAmount), ScriptTransfer(i.caller, callerEurnAmount, eurnAssetId), IntegerEntry((toString(i.caller) + "_claimed_eurn"), callerEurnAmount), IntegerEntry("total_claimed_waves", totalClaimedWaves), IntegerEntry("total_claimed_usdn", totalClaimedUsdn), IntegerEntry("total_claimed_eurn", totalClaimedEurn), BooleanEntry((toString(i.caller) + "_claimed"), true)], unit)
+                    }
+                else throw("")
+            }
+        else throw("")
+    }
+
+
+@Verifier(tx)
+func verify () = sigVerify(tx.bodyBytes, tx.proofs[0], tx.senderPublicKey)
